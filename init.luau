@@ -2,16 +2,18 @@
 --[[
     StateMachineModule (init.luau)
     Zero-dependency, standalone OOP State Machine engine with state registration,
-    canEnter guards, lifecycle hooks (enter, exit), state time tracking, and update tick loop.
+    canEnter guards, lifecycle hooks (enter, exit), state time tracking, optional auto-replication, and update tick loop.
 --]]
 
 local os = os
 local script = script
+local RunService = game:GetService("RunService")
 local Types = require(script.Types)
 local NetworkBridge = require(script.NetworkBridge)
 
 export type StateContext = Types.StateContext
 export type StateDefinition = Types.StateDefinition
+export type StateMachineOptions = Types.StateMachineOptions
 export type NetworkProvider = NetworkBridge.NetworkProvider
 
 local StateMachine = {}
@@ -24,6 +26,8 @@ export type StateMachineInstance = typeof(setmetatable({} :: {
 	_previousStateName: string?,
 	_currentState: StateDefinition?,
 	_stateStartTime: number,
+	_replicate: boolean,
+	_packetName: string,
 	_listeners: { (oldState: string?, newState: string?) -> () },
 }, StateMachine))
 
@@ -33,21 +37,35 @@ function StateMachine.setNetworkProvider(provider: NetworkProvider)
 end
 
 --- Creates a new StateMachine instance.
--- @param onStateChanged ((oldState: string?, newState: string?) -> ())? Optional callback when state changes
+-- @param options (StateMachineOptions | ((oldState: string?, newState: string?) -> ()))? Optional config options or callback
 -- @return StateMachineInstance
-function StateMachine.new(onStateChanged: ((oldState: string?, newState: string?) -> ())?): StateMachineInstance
+function StateMachine.new(options: (StateMachineOptions | ((oldState: string?, newState: string?) -> ()))?): StateMachineInstance
+	local replicate = false
+	local packetName = "RequestStateChange"
+	local listeners: { (oldState: string?, newState: string?) -> () } = {}
+
+	if type(options) == "function" then
+		table.insert(listeners, options)
+	elseif type(options) == "table" then
+		replicate = options.replicate == true
+		if options.packetName then
+			packetName = options.packetName
+		end
+		if options.onStateChanged then
+			table.insert(listeners, options.onStateChanged)
+		end
+	end
+
 	local self = setmetatable({
 		_states = {},
 		_currentStateName = nil,
 		_previousStateName = nil,
 		_currentState = nil,
 		_stateStartTime = 0,
-		_listeners = {},
+		_replicate = replicate,
+		_packetName = packetName,
+		_listeners = listeners,
 	}, StateMachine)
-
-	if onStateChanged then
-		table.insert(self._listeners, onStateChanged)
-	end
 
 	return self
 end
@@ -122,7 +140,7 @@ function StateMachine:setState(nextStateName: string, context: StateContext): (b
 
 	-- Check transition guard condition
 	if nextState.canEnter then
-		local canEnter, reason = nextState.canEnter(nextState, context, currentStateName)
+		local canEnter, reason = nextState:canEnter(context, currentStateName)
 		if not canEnter then
 			return false, reason or "blocked"
 		end
@@ -142,6 +160,13 @@ function StateMachine:setState(nextStateName: string, context: StateContext): (b
 	-- Run enter hook on new state
 	if nextState.enter then
 		nextState:enter(context, currentStateName)
+	end
+
+	-- Auto Network Replication if enabled (Client -> Server)
+	if self._replicate and RunService:IsClient() then
+		NetworkBridge.send(self._packetName, {
+			stateName = nextStateName,
+		})
 	end
 
 	-- Notify all listeners
