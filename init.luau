@@ -122,7 +122,7 @@ function StateMachine:setState(nextStateName: string, context: StateContext): (b
 
 	-- Check transition guard condition
 	if nextState.canEnter then
-		local canEnter, reason = nextState.canEnter(context, currentStateName)
+		local canEnter, reason = nextState.canEnter(nextState, context, currentStateName)
 		if not canEnter then
 			return false, reason or "blocked"
 		end
@@ -130,7 +130,7 @@ function StateMachine:setState(nextStateName: string, context: StateContext): (b
 
 	-- Run exit hook on current state
 	if self._currentState and self._currentState.exit then
-		self._currentState.exit(context, nextStateName)
+		self._currentState:exit(context, nextStateName)
 	end
 
 	-- Transition active state
@@ -141,7 +141,7 @@ function StateMachine:setState(nextStateName: string, context: StateContext): (b
 
 	-- Run enter hook on new state
 	if nextState.enter then
-		nextState.enter(context, currentStateName)
+		nextState:enter(context, currentStateName)
 	end
 
 	-- Notify all listeners
@@ -159,7 +159,7 @@ end
 function StateMachine:update(context: StateContext, dt: number): string?
 	if self._currentState and self._currentState.update then
 		local stateTime = self:getStateTime()
-		local requestedTransition = self._currentState.update(context, dt, stateTime)
+		local requestedTransition = self._currentState:update(context, dt, stateTime)
 		if requestedTransition and requestedTransition ~= self._currentStateName then
 			local success, _ = self:setState(requestedTransition, context)
 			if success then
