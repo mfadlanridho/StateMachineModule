@@ -195,4 +195,89 @@ function StateMachine:update(context: StateContext, dt: number): string?
 	return nil
 end
 
+-- ============================================================================
+-- LayeredStateMachine (Orthogonal / Parallel Multi-Layer FSM Engine)
+-- ============================================================================
+
+local LayeredStateMachine = {}
+LayeredStateMachine.__index = LayeredStateMachine
+
+export type LayeredStateMachineInstance = typeof(setmetatable({} :: {
+	_layers: { [string]: StateMachineInstance },
+	_listeners: { (layerName: string, oldState: string?, newState: string?) -> () },
+}, LayeredStateMachine))
+
+--- Creates a new LayeredStateMachine instance with independent, parallel FSM layers.
+-- @param layersConfig { [string]: { StateDefinition } } Map of layer names to registered state definitions
+-- @param options LayeredStateMachineOptions?
+-- @return LayeredStateMachineInstance
+function StateMachine.newLayered(layersConfig: { [string]: { StateDefinition } }, options: Types.LayeredStateMachineOptions?): LayeredStateMachineInstance
+	local layers: { [string]: StateMachineInstance } = {}
+	local listeners: { (layerName: string, oldState: string?, newState: string?) -> () } = {}
+
+	if options and options.onLayerStateChanged then
+		table.insert(listeners, options.onLayerStateChanged)
+	end
+
+	local self = setmetatable({
+		_layers = layers,
+		_listeners = listeners,
+	}, LayeredStateMachine)
+
+	for layerName, stateList in pairs(layersConfig) do
+		local machine = StateMachine.new({
+			replicate = options and options.replicate,
+			packetName = "Request" .. layerName .. "StateChange",
+		})
+		machine:registerStates(stateList)
+		machine:onStateChanged(function(oldState, newState)
+			for _, listener in ipairs(self._listeners) do
+				task.spawn(listener, layerName, oldState, newState)
+			end
+		end)
+		layers[layerName] = machine
+	end
+
+	return self :: any
+end
+
+function LayeredStateMachine:getLayer(layerName: string): StateMachineInstance?
+	return self._layers[layerName]
+end
+
+function LayeredStateMachine:getState(layerName: string): string?
+	local layer = self._layers[layerName]
+	return layer and layer:getCurrentStateName()
+end
+
+function LayeredStateMachine:setState(layerName: string, stateName: string, context: StateContext): (boolean, string?)
+	local layer = self._layers[layerName]
+	if not layer then
+		warn(string.format("[LayeredStateMachine] Unknown layer: %q", tostring(layerName)))
+		return false, "unknown_layer"
+	end
+	return layer:setState(stateName, context)
+end
+
+function LayeredStateMachine:update(context: StateContext, dt: number): { [string]: string? }
+	local requestedTransitions: { [string]: string? } = {}
+	for layerName, layer in pairs(self._layers) do
+		local requested = layer:update(context, dt)
+		if requested then
+			requestedTransitions[layerName] = requested
+		end
+	end
+	return requestedTransitions
+end
+
+function LayeredStateMachine:onLayerStateChanged(callback: (layerName: string, oldState: string?, newState: string?) -> ()): () -> ()
+	table.insert(self._listeners, callback)
+	return function()
+		local idx = table.find(self._listeners, callback)
+		if idx then
+			table.remove(self._listeners, idx)
+		end
+	end
+end
+
 return StateMachine

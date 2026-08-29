@@ -20,6 +20,11 @@ export type StateMachineOptions = {
 	packetName: string?,
 }
 
+export type LayeredStateMachineOptions = {
+	onLayerStateChanged: ((layerName: string, oldState: string?, newState: string?) -> ())?,
+	replicate: boolean?,
+}
+
 export type NetworkProvider = {
 	send: (actionName: string, payload: any, targetPlayer: Player?) -> (),
 	listen: (actionName: string, callback: (payload: any, player: Player) -> ()) -> (),

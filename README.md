@@ -21,12 +21,13 @@ StateMachineModule/
 
 - 🔌 **100% Plug & Play**: Drop into any project and use immediately with zero setup required.
 - ⚡ **Zero Dependencies**: Pure Luau package compatible with Server and Client scripts.
+- 🔀 **Orthogonal Layered FSM (`StateMachine.newLayered`)**: Run multiple parallel/independent state machine layers (`Body`, `Hand`, etc.) without state collisions.
 - 🌐 **Dual Networking Adapter**: Built-in auto-detection for **ByteNet** buffer serialization, native **RemoteEvents**, or **Local Standalone** mode.
 - 🛡 **Transition Guards (`canEnter`)**: Conditional checks to allow or block transitions dynamically.
 - ⏱ **State Time Tracking (`getStateTime`)**: Automatic tracking of seconds spent in the current state (perfect for timeouts).
 - 🔄 **Lifecycle Hooks**: `enter(context, fromState)` and `exit(context, toState)`.
 - ⏱ **Frame Update Loop (`update`)**: `update(context, dt, stateTime)` can return a requested state name directly to auto-trigger transitions.
-- 📡 **Multi-Listener Signal (`onStateChanged`)**: Connect multiple independent event listeners to state changes.
+- 📡 **Multi-Listener Signal (`onStateChanged` & `onLayerStateChanged`)**: Connect multiple independent event listeners to state changes.
 
 ---
 
@@ -59,6 +60,31 @@ machine:setState("Idle", context)
 RunService.Heartbeat:Connect(function(dt)
     machine:update(context, dt)
 end)
+```
+
+---
+
+## 🔀 Layered State Machine (`StateMachine.newLayered`)
+
+For complex characters or systems requiring parallel state tracks (e.g. `Body` locomotion state and `Hand` action state running simultaneously without state collisions):
+
+```luau
+local layeredMachine = StateMachine.newLayered({
+    Body = { NormalState.new(), BeingGrabbedState.new(), FlungState.new() },
+    Hand = { IdleState.new(), GrabbingState.new() },
+}, {
+    onLayerStateChanged = function(layerName, oldState, newState)
+        print(string.format("[%s Layer] %s -> %s", layerName, tostring(oldState), tostring(newState)))
+    end,
+})
+
+-- Transition individual layers independently
+layeredMachine:setState("Body", "BeingGrabbed", context)
+layeredMachine:setState("Hand", "Grabbing", context)
+
+-- Query active state per layer
+print(layeredMachine:getState("Body")) -- "BeingGrabbed"
+print(layeredMachine:getState("Hand")) -- "Grabbing"
 ```
 
 ---
