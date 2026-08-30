@@ -21,6 +21,8 @@ StateMachineModule/
 
 - 🔌 **100% Plug & Play**: Drop into any project and use immediately with zero setup required.
 - ⚡ **Zero Dependencies**: Pure Luau package compatible with Server and Client scripts.
+- 🗺 **Declarative Transition Matrix (`transitions`)**: Define strict, secure allowed transition paths per state.
+- 🔍 **Transition Validation (`canTransitionTo`)**: Check if a state transition is allowed before executing it.
 - 🔀 **Orthogonal Layered FSM (`StateMachine.newLayered`)**: Run multiple parallel/independent state machine layers (`Body`, `Hand`, etc.) without state collisions.
 - 🌐 **Dual Networking Adapter**: Built-in auto-detection for **ByteNet** buffer serialization, native **RemoteEvents**, or **Local Standalone** mode.
 - 🛡 **Transition Guards (`canEnter`)**: Conditional checks to allow or block transitions dynamically.
@@ -38,8 +40,17 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StateMachine = require(ReplicatedStorage.Packages.StateMachineModule)
 
--- 1. Instantiate state machine
-local machine = StateMachine.new()
+-- 1. Instantiate state machine with Declarative Transition Matrix
+local machine = StateMachine.new({
+    transitions = {
+        Idle = { "ExecutingMove", "Blocking", "Dashing", "Stunned", "Dead" },
+        ExecutingMove = { "ExecutingMove", "Idle", "Blocking", "Dashing", "Stunned", "Dead" },
+        Blocking = { "Idle", "Stunned", "Dead" },
+        Dashing = { "Idle", "Stunned", "Dead" },
+        Stunned = { "Idle", "Dead" },
+        Dead = {},
+    }
+})
 
 -- 2. Subscribe listeners
 machine:onStateChanged(function(oldState, newState)
@@ -48,18 +59,20 @@ end)
 
 -- 3. Register state definitions
 local IdleState = require(script.IdleState)
-local WalkState = require(script.WalkState)
+local ExecutingMoveState = require(script.ExecutingMoveState)
 
-machine:registerStates({ IdleState, WalkState })
+machine:registerStates({ IdleState, ExecutingMoveState })
 
--- 4. Define shared context & trigger state
-local context = { speed = 0, character = workspace:FindFirstChild("MyCharacter") }
-machine:setState("Idle", context)
+-- 4. Validate and set active state
+local context = { character = workspace:FindFirstChild("MyCharacter") }
 
--- 5. Update tick loop (optional)
-RunService.Heartbeat:Connect(function(dt)
-    machine:update(context, dt)
-end)
+local canTransition, reason = machine:canTransitionTo("ExecutingMove", context)
+if canTransition then
+    machine:setState("ExecutingMove", context)
+end
+
+-- 5. Query active state name
+print(machine:getState()) -- "ExecutingMove"
 ```
 
 ---
