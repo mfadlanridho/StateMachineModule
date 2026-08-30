@@ -28,6 +28,7 @@ export type StateMachineInstance = typeof(setmetatable({} :: {
 	_stateStartTime: number,
 	_replicate: boolean,
 	_packetName: string,
+	_transitions: { [string]: { string } }?,
 	_listeners: { (oldState: string?, newState: string?) -> () },
 }, StateMachine))
 
@@ -42,6 +43,7 @@ end
 function StateMachine.new(options: (StateMachineOptions | ((oldState: string?, newState: string?) -> ()))?): StateMachineInstance
 	local replicate = false
 	local packetName = "RequestStateChange"
+	local transitions: { [string]: { string } }? = nil
 	local listeners: { (oldState: string?, newState: string?) -> () } = {}
 
 	if type(options) == "function" then
@@ -50,6 +52,9 @@ function StateMachine.new(options: (StateMachineOptions | ((oldState: string?, n
 		replicate = options.replicate == true
 		if options.packetName then
 			packetName = options.packetName
+		end
+		if (options :: any).transitions then
+			transitions = (options :: any).transitions
 		end
 		if options.onStateChanged then
 			table.insert(listeners, options.onStateChanged)
@@ -64,6 +69,7 @@ function StateMachine.new(options: (StateMachineOptions | ((oldState: string?, n
 		_stateStartTime = 0,
 		_replicate = replicate,
 		_packetName = packetName,
+		_transitions = transitions,
 		_listeners = listeners,
 	}, StateMachine)
 
@@ -106,6 +112,12 @@ function StateMachine:getCurrentStateName(): string?
 	return self._currentStateName
 end
 
+--- Returns the name of the currently active state (Alias for getCurrentStateName).
+-- @return string?
+function StateMachine:getState(): string?
+	return self._currentStateName or "Idle"
+end
+
 --- Returns the name of the previous state.
 -- @return string?
 function StateMachine:getPreviousStateName(): string?
@@ -119,6 +131,37 @@ function StateMachine:getStateTime(): number
 		return 0
 	end
 	return os.clock() - self._stateStartTime
+end
+
+--- Validates if transition to `nextStateName` is allowed by transition matrix & canEnter guard.
+function StateMachine:canTransitionTo(nextStateName: string, context: StateContext): (boolean, string?)
+	local nextState = self._states[nextStateName]
+	if not nextState then
+		return false, "unknown_state"
+	end
+
+	local currentStateName = self._currentStateName
+	if currentStateName == nextStateName then
+		return false, "already_in_state"
+	end
+
+	-- Check Declarative Transition Matrix if defined
+	if self._transitions and currentStateName then
+		local allowed = self._transitions[currentStateName]
+		if allowed and not table.find(allowed, nextStateName) then
+			return false, string.format("transition_not_allowed_from_%s_to_%s", tostring(currentStateName), tostring(nextStateName))
+		end
+	end
+
+	-- Check state definition canEnter hook
+	if nextState.canEnter then
+		local canEnter, reason = nextState:canEnter(context, currentStateName)
+		if not canEnter then
+			return false, reason or "blocked"
+		end
+	end
+
+	return true, nil
 end
 
 --- Attempts to set the active state to `nextStateName`.
@@ -138,12 +181,9 @@ function StateMachine:setState(nextStateName: string, context: StateContext): (b
 		return false, "already_in_state"
 	end
 
-	-- Check transition guard condition
-	if nextState.canEnter then
-		local canEnter, reason = nextState:canEnter(context, currentStateName)
-		if not canEnter then
-			return false, reason or "blocked"
-		end
+	local canEnter, reason = self:canTransitionTo(nextStateName, context)
+	if not canEnter then
+		return false, reason
 	end
 
 	-- Run exit hook on current state
