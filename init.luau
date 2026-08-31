@@ -154,8 +154,9 @@ function StateMachine:canTransitionTo(nextStateName: string, context: StateConte
 	end
 
 	-- Check state definition canEnter hook
-	if nextState.canEnter then
-		local canEnter, reason = nextState:canEnter(context, currentStateName)
+	local canEnterFunc = nextState.canEnter
+	if canEnterFunc then
+		local canEnter, reason = canEnterFunc(context, currentStateName)
 		if not canEnter then
 			return false, reason or "blocked"
 		end
@@ -187,8 +188,9 @@ function StateMachine:setState(nextStateName: string, context: StateContext): (b
 	end
 
 	-- Run exit hook on current state
-	if self._currentState and self._currentState.exit then
-		self._currentState:exit(context, nextStateName)
+	local exitFunc = self._currentState and self._currentState.exit
+	if exitFunc then
+		exitFunc(context, nextStateName)
 	end
 
 	-- Transition active state
@@ -198,8 +200,9 @@ function StateMachine:setState(nextStateName: string, context: StateContext): (b
 	self._stateStartTime = os.clock()
 
 	-- Run enter hook on new state
-	if nextState.enter then
-		nextState:enter(context, currentStateName)
+	local enterFunc = nextState.enter
+	if enterFunc then
+		enterFunc(context, currentStateName)
 	end
 
 	-- Auto Network Replication if enabled (Client -> Server)
@@ -222,9 +225,10 @@ end
 -- @param dt number - Frame delta time
 -- @return string? - Optional requested next state transition name
 function StateMachine:update(context: StateContext, dt: number): string?
-	if self._currentState and self._currentState.update then
+	local updateFunc = self._currentState and self._currentState.update
+	if updateFunc then
 		local stateTime = self:getStateTime()
-		local requestedTransition = self._currentState:update(context, dt, stateTime)
+		local requestedTransition = updateFunc(context, dt, stateTime)
 		if requestedTransition and requestedTransition ~= self._currentStateName then
 			local success, _ = self:setState(requestedTransition, context)
 			if success then
