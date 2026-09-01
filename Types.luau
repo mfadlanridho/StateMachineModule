@@ -8,10 +8,10 @@ export type StateContext = { [string]: any }
 
 export type StateDefinition = {
 	name: string,
-	canEnter: ((self: StateDefinition, context: StateContext, fromState: string?) -> (boolean, string?))?,
-	enter: ((self: StateDefinition, context: StateContext, fromState: string?) -> ())?,
-	exit: ((self: StateDefinition, context: StateContext, toState: string?) -> ())?,
-	update: ((self: StateDefinition, context: StateContext, dt: number, stateTime: number) -> string?)?,
+	canEnter: ((context: StateContext, fromState: string?) -> (boolean, string?))?,
+	enter: ((context: StateContext, fromState: string?) -> ())?,
+	exit: ((context: StateContext, toState: string?) -> ())?,
+	update: ((context: StateContext, dt: number, stateTime: number) -> string?)?,
 }
 
 export type StateMachineOptions = {
