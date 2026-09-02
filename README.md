@@ -122,5 +122,36 @@ StateMachine.setNetworkProvider({
 
 ---
 
+## 🎮 Best Practices for Roblox Game Integration
+
+When integrating `StateMachineModule` into a Roblox game, follow these 5 core architectural patterns:
+
+### 1. Central Manager Layer (`PlayerFSM`)
+Create a central shared manager (e.g. `src/shared/Utils/PlayerFSM.luau`) that wraps `StateMachine.new()` per player:
+- **Server**: Manages network state attributes (`player:SetAttribute("FSMState", state)`) and timed auto-recovery threads.
+- **Client**: Instantiates `StateMachineModule` instances locally, executing `enter()` and `exit()` physics/animation hooks.
+
+### 2. Generic Payload & Timed State Support
+Pass arbitrary payload tables into `setState()` via `context.payload`:
+```luau
+-- Server calls:
+PlayerFSM.SetState(player, "Ragdolled", {
+    duration = 2.5,
+    launchVector = Vector3.new(0, 35, -50),
+})
+```
+- Generic `payload.duration` automatically handles server attribute recovery timers (`task.delay`).
+- Generic `payload` data (like `launchVector`) is consumed directly by state `enter()` hooks on the client.
+
+### 3. Encapsulate Side-Effects inside State Definitions
+Never run physics or animation toggles outside of state definition files:
+- **`enter(context)`**: Enable platform stand, stop character animations, apply flail velocity.
+- **`exit(context)`**: Restore standing humanoid states, re-enable animations.
+
+### 4. Single Unified Event Stream (`OnStateChanged`)
+Expose a single `PlayerFSM.OnStateChanged(player, callback)` interface for UI, sound FX, and debug controllers. Avoid having UI scripts listen directly to raw Roblox attributes.
+
+---
+
 ## 📄 License
 MIT License - Free for use across all your Roblox projects.
