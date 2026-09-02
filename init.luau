@@ -10,15 +10,19 @@ local script = script
 local RunService = game:GetService("RunService")
 local Types = require(script.Types)
 local NetworkBridge = require(script.NetworkBridge)
+local OverheadUI = require(script.OverheadUI)
 
 export type StateContext = Types.StateContext
 export type StateDefinition = Types.StateDefinition
 export type StateMachineOptions = Types.StateMachineOptions
 export type NetworkProvider = NetworkBridge.NetworkProvider
+export type OverheadUIOptions = OverheadUI.OverheadUIOptions
+export type StateConfigMap = OverheadUI.StateConfigMap
 
 local StateMachine = {}
 StateMachine.__index = StateMachine
 StateMachine.NetworkBridge = NetworkBridge
+StateMachine.OverheadUI = OverheadUI
 
 export type StateMachineInstance = typeof(setmetatable({} :: {
 	_states: { [string]: StateDefinition },
